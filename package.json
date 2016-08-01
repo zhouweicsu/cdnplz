@@ -1,0 +1,19 @@
+{
+  "name": "cdnplz",
+  "version": "0.0.1",
+  "description": "A tool for CDN",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zhouweicsu/cdnplz.git"
+  },
+  "keywords": [
+    "cdn"
+  ],
+  "author": "zhouweicsu",
+  "license": "ISC",
+  "main": "cdnplz.js",
+  "bugs": {
+    "url": "https://github.com/zhouweicsu/cdnplz/issues"
+  },
+  "homepage": "https://github.com/zhouweicsu/cdnplz"
+}
