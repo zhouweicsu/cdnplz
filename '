@@ -1,0 +1,97 @@
+module.exports = cdnplz;
+
+const glob = require('glob');
+const fs = require('fs');
+const mkdirp = require('mkdirp');
+const path = require('path');
+
+// 标签与属性的对应关系
+const typeMap = {
+    'img': 'src',
+    'script': 'src',
+    'embed': 'src',
+    'link': 'href',
+    'object': 'data'
+}
+
+function cdnplz(options){
+
+    const cdnProvider = require(options.cdn_provider);
+    console.log(cdnProvider);
+
+    // 需要处理的模版文件正则
+    const pattern = `${options.tpl_path}/**/*.${options.tpl_suffix}`;
+    console.log(pattern);
+
+    // 命中的模板文件
+    const tpls = glob.sync(pattern, {mark: true});
+
+    console.log("\n\ntpls", tpls);
+
+    // 遍历模板文件内容，处理其中需要上传CDN的文件
+    tpls.forEach( tpl => {
+        //读取文件内容
+        var fileContent = fs.readFileSync(tpl, 'utf8');
+        //获取文件夹中需要上传 CDN 的文件名
+        var fileNames = _getFileNameString(fileContent, options);
+
+        fileNames = fileNames.map(fileName => {
+            fileName =  _getFileName(fileName); //处理字符串，只保留真正的文件名
+            console.log(fileName);
+            //上传CDN
+            _uploadFile(cdnProvider, `${options.static_path}${fileName}`, options).then(data => {
+                console.log('\n\n------data:');
+                console.dir(data);
+                if(data){
+                    //替换文件地址
+                    fileContent = fileContent.replace(new RegExp(fileName,'g'), data[fileName]);
+                    // 写入指定 output 文件
+                    var outputFile = options.output_path + path.basename(tpl);
+                    fs.stat(options.output_path,function(err, states){
+                        if(err || !states.isDirectory()){
+                            mkdirp.sync(options.output_path);
+                        }
+                        fs.writeFileSync(outputFile, fileContent ,options.file_encoding || 'utf8');
+                    })
+                }
+            });
+        });
+    });
+}
+
+// 获取该文件中所有需要替换的文件名
+function _getFileNameString(fileContent, options) {
+    var tempFiles = [],
+        regex = '';
+    for(var type in typeMap) {
+        //jade模版
+        if(options.tpl_suffix == 'jade') {
+            regex = new RegExp(`(${type})(\s)*\((\s)*.*(${typeMap[type]}).*\)`,'ig')
+        }
+        var files = fileContent.match(regex);
+        tempFiles = files ? tempFiles.concat(files) : tempFiles;
+    }
+    return tempFiles;
+}
+
+// 处理文件名
+function _getFileName(fileName) {
+    fileName = fileName.replace(/\'/g,'"');
+    var type = fileName.substring(0,fileName.indexOf('('));
+    var typeSrc = typeMap[type]+'="';
+    var start = fileName.indexOf(typeSrc);
+    var end = fileName.indexOf('"', start + typeSrc.length);
+    return fileName.substring(start + typeSrc.length, end);
+}
+
+// 上传文件
+function _uploadFile(cdnProvider, filePath, options) {
+    try{
+        if(options.cdn_provider == '@q/qcdn') {
+            return cdnProvider(filePath, options.plugins[options.cdn_provider]);
+        }
+    }catch(e){
+        console.log(e.ERROR);
+    }
+    return Promise.resolve('');
+}

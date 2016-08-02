@@ -15,5 +15,9 @@
   "bugs": {
     "url": "https://github.com/zhouweicsu/cdnplz/issues"
   },
-  "homepage": "https://github.com/zhouweicsu/cdnplz"
+  "homepage": "https://github.com/zhouweicsu/cdnplz",
+  "dependencies": {
+    "@q/qcdn": "^3.0.13",
+    "mkdirp": "^0.5.1"
+  }
 }
