@@ -1,9 +1,3 @@
-# cdnplz
-A tool to upload file to cdn.
-
-# How to use?
-
-```javascript
 const cdnplz = require('cdnplz');
 
 try{
@@ -23,4 +17,3 @@ try{
 }catch(e){
     console.log(e);
 }
-```

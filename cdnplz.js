@@ -16,7 +16,7 @@ const jadeTypeMap = {
 
 // 用户配置
 var _options = null;
-
+// 缓存文件上传 Promise 缓存
 var fileCdnCache = {};
 
 function cdnplz1(options){
@@ -40,31 +40,15 @@ function cdnplz1(options){
             fileName: tpl,
             subResource: _getResource(tpl)
         };
-
-        console.log('--------resFileNames----------');
-        console.dir(resFileNames);
-
         resourceTree.push(resFileNames);
     });
-    console.log('---------------------resourceTree');
-    console.log(JSON.stringify(resourceTree));
 
-    //_dealPromise(resourceTree, cdnProvider);
     resourceTree.forEach(res => {
-        var promise = _dealSubResource(res, cdnProvider);
-        console.log('promise--------------------->>>>');
-        console.dir(promise);
-        promise.then(data => {
-           // console.log('--tpl--')
-           // console.log(_getWholePathFile(res.fileName))
+        _dealSubResource(res, cdnProvider).then(data => {
             var tplContent = fs.readFileSync(_getWholePathFile(res.fileName), 'utf8');
-            //console.log(tplContent);
             tplContent = _replace(tplContent, data);
-            //console.log(tplContent);
-            console.dir(data);
             _saveFile(res.fileName, tplContent);
         }).catch(e => {
-            console.log('---resourceTree 遍历-');
             console.log(e);
         });
     });
@@ -84,8 +68,6 @@ function _dealSubResource(resourceTree, cdnProvider) {
 
     return Promise.all(promises).then(data => {
         // data 是上传完文件的所有子资源地址数组
-        console.log('----地址----');
-        console.dir(data);
         if(suffix == 'css'){
             // 替换文件中的资源地址
             var cssContent = fs.readFileSync(_getWholePathFile(resourceTree.fileName), 'utf8');
@@ -124,7 +106,6 @@ function _saveFile(file, fileContent)  {
 
 //将相对地址替换成 CDN 地址
 function _replace(fileContent, subResCdnUrl) {
-    console.dir(subResCdnUrl);
     if( subResCdnUrl ){
         subResCdnUrl.forEach(subRes => {
             for(var subResFileName in subRes) {
@@ -138,19 +119,18 @@ function _replace(fileContent, subResCdnUrl) {
 
 // 上传文件
 function _uploadFile(cdnProvider, fileName) {
+    fileName = _getWholePathFile(fileName);
     if(fileCdnCache[fileName]) {
         return fileCdnCache[fileName];
     }
-    fileName = _getWholePathFile(fileName);
     try{
         if(_options.cdn_provider == '@q/qcdn') {
-            console.log('----:::::::::::::::::::上传：'+fileName);
+            console.log('上传文件'+fileName);
             var uploadPromise = cdnProvider.upload(fileName, _options.plugins[_options.cdn_provider]);
             fileCdnCache[fileName] = uploadPromise;
             return uploadPromise;
         }
     }catch(e){
-        console.error('------------error------------');
         console.dir(e);
     }
     return Promise.resolve(null);
@@ -160,7 +140,6 @@ function _uploadFile(cdnProvider, fileName) {
 // 获取 fileName 文件中所有需要上传的资源名称
 function _getResource(fileName) {
     const suffix = _getFileSuffix(fileName);
-    console.log(fileName);
     if(suffix != 'css' && suffix != _options.tpl_suffix) return null;
     const regexObj = _getRegexes(suffix);
     const fileContent = fs.readFileSync(_getWholePathFile(fileName), 'utf8');
