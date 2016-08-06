@@ -1,2 +1,2 @@
 # cdnplz
-A tool to upload file to cdn.
+A tool for uploading file to cdn.
