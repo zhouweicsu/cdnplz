@@ -4,6 +4,9 @@ const glob = require('glob');
 const fs = require('fs');
 const mkdirp = require('mkdirp');
 const path = require('path');
+const crypto = require('crypto');
+
+const BUFFER_SIZE = 8192;
 
 // 标签与属性的对应关系
 const jadeTypeMap = {
@@ -17,9 +20,12 @@ const jadeTypeMap = {
 // 用户配置
 var _options = null;
 // 缓存文件上传 Promise 缓存
-var fileCdnCache = {};
+var cdnCache = {};
+var cdnCacheFromFile = {};
+const cdnCacheFileName = './cdn.cache';
 
 function cdnplz1(options){
+    const start = new Date();
     _options = options;
 
     const cdnProvider = require(_options.cdn_provider);
@@ -29,6 +35,9 @@ function cdnplz1(options){
 
     // 命中的模板文件
     const tpls = glob.sync(pattern, {mark: true});
+
+    cdnCacheFromFile = _dealCacheFile(cdnCacheFileName);
+
 
     // 缓存 CDN 文件上传，避免重复上传
     var resourceTree = [];
@@ -43,14 +52,22 @@ function cdnplz1(options){
         resourceTree.push(resFileNames);
     });
 
+    var promises = [];
     resourceTree.forEach(res => {
-        _dealSubResource(res, cdnProvider).then(data => {
+        var p = _dealSubResource(res, cdnProvider).then(data => {
             var tplContent = fs.readFileSync(_getWholePathFile(res.fileName), 'utf8');
             tplContent = _replace(tplContent, data);
             _saveFile(res.fileName, tplContent);
         }).catch(e => {
             console.log(e);
         });
+        promises.push(p);
+    });
+    // cdn 上传结束
+    Promise.all(promises).then(response => {
+        fs.writeFileSync(cdnCacheFileName, JSON.stringify(cdnCacheFromFile));
+        const time = (new Date().getTime() - start.getTime())/1000;
+        console.log(`-----${time}s-----\nDone!`);
     });
 }
 
@@ -66,19 +83,56 @@ function _dealSubResource(resourceTree, cdnProvider) {
         }
     });
 
-    return Promise.all(promises).then(data => {
-        // data 是上传完文件的所有子资源地址数组
+    return Promise.all(promises).then(response => {
+        console.dir(response);
+        // 处理response，将文件缓存
+        response.forEach(r => {
+            for( var fileName in r ){
+                cdnCacheFromFile[_md5FileSync(fileName)] = r[fileName];
+            }
+        });
+        console.dir(cdnCacheFromFile);
+        // response 是上传完文件的所有子资源地址数组
         if(suffix == 'css'){
             // 替换文件中的资源地址
             var cssContent = fs.readFileSync(_getWholePathFile(resourceTree.fileName), 'utf8');
-            cssContent = _replace(cssContent, data);
+            cssContent = _replace(cssContent, response);
             _saveFile(resourceTree.fileName, cssContent);
             return _uploadFile(cdnProvider, resourceTree.fileName);
         }else {
-            return Promise.resolve(data);
+            return Promise.resolve(response);
         }
     });
 }
+function _dealCacheFile(cdnCacheFileName) {
+    try {
+        return JSON.parse(fs.readFileSync(cdnCacheFileName, 'utf8'));
+    }catch(e){
+        console.log(e);
+        return {};
+    }
+}
+
+// 将文件内容 md5
+function _md5FileSync (filename) {
+  var fd = fs.openSync(filename, 'r');
+  var hash = crypto.createHash('md5');
+  var buffer = new Buffer(BUFFER_SIZE);
+
+  try {
+    var bytesRead;
+
+    do {
+      bytesRead = fs.readSync(fd, buffer, 0, BUFFER_SIZE);
+      hash.update(buffer.slice(0, bytesRead));
+    } while (bytesRead === BUFFER_SIZE)
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  return hash.digest('hex');
+}
+
 //写入指定 output 文件
 function _saveFile(file, fileContent)  {
     // 写入指定 output 文件
@@ -120,14 +174,20 @@ function _replace(fileContent, subResCdnUrl) {
 // 上传文件
 function _uploadFile(cdnProvider, fileName) {
     fileName = _getWholePathFile(fileName);
-    if(fileCdnCache[fileName]) {
-        return fileCdnCache[fileName];
+    if(cdnCache[fileName]) {
+        return cdnCache[fileName];
+    }
+    var md5 = _md5FileSync(fileName);
+    if(cdnCacheFromFile[md5]){
+        var promise = Promise.resolve(cdnCacheFromFile[md5]);
+        cdnCache[fileName] = uploadPromise;
+        return uploadPromise;
     }
     try{
         if(_options.cdn_provider == '@q/qcdn') {
             console.log('上传文件'+fileName);
             var uploadPromise = cdnProvider.upload(fileName, _options.plugins[_options.cdn_provider]);
-            fileCdnCache[fileName] = uploadPromise;
+            cdnCache[fileName] = uploadPromise;
             return uploadPromise;
         }
     }catch(e){
