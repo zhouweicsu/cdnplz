@@ -4,22 +4,6 @@ const mkdirp = require('mkdirp');
 const path = require('path');
 const crypto = require('crypto');
 
-const BUFFER_SIZE = 8192;
-
-// 标签与属性的对应关系
-const jadeTypeMap = {
-    'img': 'src',
-    'script': 'src',
-    'embed': 'src',
-    'link': 'href',
-    'object': 'data'
-}
-// 缓存文件上传 Promise 缓存
-var cdnCache = {};
-// 本地的CDN地址缓存文件
-var cdnCacheFromFile = {};
-const cdnCacheFileName = './cdn.cache';
-
 var cdnplz = {
     options: {
         tpl_suffix: 'html',   //模板文件后缀名
@@ -28,44 +12,45 @@ var cdnplz = {
         output_path: 'output/view/', //输出目录
         file_encoding: 'utf8', //文件编码
         cdn_provider: '',
-        plugins: {
-            qiniu: {
-                https: true
-            }
-        }
+        plugins: {}
     },
+    jadeTypeMap: { // 标签与属性的对应关系
+        'img': 'src',
+        'script': 'src',
+        'embed': 'src',
+        'link': 'href',
+        'object': 'data'
+    },
+    cdnCache: {},// 缓存文件上传的 Promise
+    cdnCacheFromFile: {},// 本地的CDN地址缓存文件
+    cdnCacheFileName: './cdn.cache',// 本地的CDN地址缓存文件路径+名称
+    resourceTree: [],// 缓存 CDN 文件上传，避免重复上传
+    cdnProvider: null,// 用户自定义CDN Provider
+    startTime: 0, //记录总用时的start
     init(options) {
-        const start = new Date();
-        this.options = Object.assign(this.options, options);
-        console.log(this.options.cdn_provider);
-
-        const cdnProvider = require(this.options.cdn_provider);
-
-        // 需要处理的模版文件正则
-        const pattern = `${this.options.tpl_path}/**/*.${this.options.tpl_suffix}`;
-
-        // 命中的模板文件
-        const tpls = glob.sync(pattern, {mark: true});
-
-        cdnCacheFromFile = this._dealCacheFile(cdnCacheFileName);
-
-
-        // 缓存 CDN 文件上传，避免重复上传
-        var resourceTree = [];
-
+        this.startTime = new Date().getTime();
+        this.options = Object.assign(this.options, options); // 用户配置覆盖默认配置
+        this.cdnProvider = require(this.options.cdn_provider);
+        try { //读取cdn.cache文件，返回一个json格式文件，key: md5, value: cdn 地址
+            this.cdnCacheFromFile = JSON.parse(fs.readFileSync(this.cdnCacheFileName, 'utf8'));
+        }catch(e){
+            console.log(e);
+        }
+        this.start();
+    },
+    start() {
+        var promises = [];
+        const tpls = glob.sync(this._getRegexes('tpl'), {mark: true});// 命中的模板文件
         // 遍历模板文件内容，处理其中需要上传CDN的文件
         tpls.forEach( tpl => {
-            //获取模板文件中需要上传 CDN 的资源文件名
-            var resFileNames = {
+            this.resourceTree.push({//获取模板文件中需要上传 CDN 的资源文件名
                 fileName: tpl,
-                subResource: this._getResource(tpl)
-            };
-            resourceTree.push(resFileNames);
+                subResource: this._getSubResource(tpl)
+            });
         });
-
-        var promises = [];
-        resourceTree.forEach(res => {
-            var p = this._dealSubResource(res, cdnProvider).then(data => {
+        // 遍历资源树，处理其中的子资源
+        this.resourceTree.forEach(res => {
+            var p = this._dealSubResource(res).then(data => {
                 var tplContent = fs.readFileSync(this._getWholePathFile(res.fileName), 'utf8');
                 tplContent = this._replace(tplContent, data);
                 this._saveFile(res.fileName, tplContent);
@@ -76,140 +61,108 @@ var cdnplz = {
         });
         // cdn 上传结束
         Promise.all(promises).then(response => {
-            fs.writeFileSync(cdnCacheFileName, JSON.stringify(cdnCacheFromFile));
-            const time = (new Date().getTime() - start.getTime())/1000;
+            fs.writeFileSync(this.cdnCacheFileName, JSON.stringify(this.cdnCacheFromFile));
+            const time = (new Date().getTime() - this.startTime)/1000;
             console.log(`-----${time}s-----\nDone!`);
         });
     },
 
-    //处理上传之后的文件
-    _dealSubResource(resourceTree, cdnProvider) {
+    //递归处理子资源文件
+    _dealSubResource(res) {
         var promises = [];
-        var suffix = this._getFileSuffix(resourceTree.fileName);
-        resourceTree.subResource.forEach(res => {
-            if(res.subResource) {
-                promises.push(this._dealSubResource(res,  cdnProvider));
+        res.subResource.forEach(subres => {
+            if(subres.subResource) {
+                promises.push(this._dealSubResource(subres));
             }else {
-                promises.push(this._uploadFile(cdnProvider, res.fileName));
+                promises.push(this._uploadFile(subres.fileName));
             }
         });
 
         return Promise.all(promises).then(response => {
-            console.dir(response);
-            // 处理response，将文件缓存
-            response.forEach(r => {
+            response.forEach(r => {// 处理response，将文件缓存
                 for( var fileName in r ){
-                    cdnCacheFromFile[this._md5FileSync(fileName)] = r[fileName];
+                    this.cdnCacheFromFile[this._md5FileSync(fileName)] = r[fileName];
                 }
             });
-            console.dir(cdnCacheFromFile);
-            // response 是上传完文件的所有子资源地址数组
-            if(suffix == 'css'){
-                // 替换文件中的资源地址
-                var cssContent = fs.readFileSync(this._getWholePathFile(resourceTree.fileName), 'utf8');
+            if(this._getFileSuffix(res.fileName) == 'css'){// 替换CSS文件中的资源地址
+                var cssContent = fs.readFileSync(this._getWholePathFile(res.fileName), 'utf8');
                 cssContent = this._replace(cssContent, response);
-                this._saveFile(resourceTree.fileName, cssContent);
-                return this._uploadFile(cdnProvider, resourceTree.fileName);
+                this._saveFile(res.fileName, cssContent);
+                return this._uploadFile(res.fileName);
             }else {
                 return Promise.resolve(response);
             }
         });
     },
-    _dealCacheFile(cdnCacheFileName) {
+
+    // 计算文件内容 md5 值
+    _md5FileSync (fileName) {
+        var hash = crypto.createHash('md5');
         try {
-            return JSON.parse(fs.readFileSync(cdnCacheFileName, 'utf8'));
+            hash.update(fs.readFileSync(fileName, this.options.file_encoding));
         }catch(e){
             console.log(e);
-            return {};
         }
-    },
-
-    // 将文件内容 md5
-    _md5FileSync (filename) {
-        var fd = fs.openSync(filename, 'r');
-        var hash = crypto.createHash('md5');
-        var buffer = new Buffer(BUFFER_SIZE);
-
-        try {
-            var bytesRead;
-
-            do {
-                bytesRead = fs.readSync(fd, buffer, 0, BUFFER_SIZE);
-                hash.update(buffer.slice(0, bytesRead));
-            } while (bytesRead === BUFFER_SIZE)
-        } finally {
-            fs.closeSync(fd);
-        }
-
         return hash.digest('hex');
     },
 
     //写入指定 output 文件
     _saveFile(file, fileContent)  {
-        // 写入指定 output 文件
-        var suffix = this._getFileSuffix(file);
-        var outputFile;
-        if(suffix == 'css') {
-            outputFile = this.options.static_path + file;
-        }else {
-            outputFile = this.options.output_path + path.basename(file);
-        }
-        console.log('\n---------------outputFile--------');
-        console.log(outputFile);
-        var stats;
+        var outputFile = (this._getFileSuffix(file) == 'css')
+                         ? (this.options.static_path + file)
+                         : (this.options.output_path + path.basename(file));
         try{
-            stats = fs.statSync(this.options.output_path);
-            if(!stats || !stats.isdirectory()){
+            if(!fs.statSync(this.options.output_path).isdirectory()){
                 mkdirp.sync(this.options.output_path);
-                fs.writeFileSync(outputFile, fileContent ,this.options.file_encoding || 'utf8');
             }
         }catch(e){
             mkdirp.sync(this.options.output_path);
-            fs.writeFileSync(outputFile, fileContent ,this.options.file_encoding || 'utf8');
         }
+        fs.writeFileSync(outputFile, fileContent ,this.options.file_encoding || 'utf8');
     },
 
     //将相对地址替换成 CDN 地址
     _replace(fileContent, subResCdnUrl) {
-        if( subResCdnUrl ){
-            subResCdnUrl.forEach(subRes => {
-                for(var subResFileName in subRes) {
-                    var replaceFileName = subResFileName.substring(this.options.static_path.length, subResFileName.length);
-                    fileContent = fileContent.replace(new RegExp(replaceFileName, 'ig'), subRes[subResFileName]);
-                }
-            });
-        }
+        if(!subResCdnUrl || !subResCdnUrl.length) return fileContent;
+        subResCdnUrl.forEach(subRes => {
+            for(var subResFileName in subRes) {
+                var replaceFileName = subResFileName.substring(this.options.static_path.length, subResFileName.length);
+                fileContent = fileContent.replace(new RegExp(replaceFileName, 'ig'), subRes[subResFileName]);
+            }
+        });
         return fileContent;
     },
 
     // 上传文件
-    _uploadFile(cdnProvider, fileName) {
+    _uploadFile(fileName) {
         fileName = this._getWholePathFile(fileName);
-        if(cdnCache[fileName]) {
-            return cdnCache[fileName];
+        if(this.cdnCache[fileName]) {  //判断本次是否已经上传过
+            return this.cdnCache[fileName];
         }
-        var md5 = this._md5FileSync(fileName);
-        if(cdnCacheFromFile[md5]){
-            var promise = Promise.resolve(cdnCacheFromFile[md5]);
-            cdnCache[fileName] = uploadPromise;
+        var uploadPromise ;
+        var md5 = this._md5FileSync(fileName); // 判断上一次执行cdnplz是否上传过该文件
+        if(this.cdnCacheFromFile[md5]){
+            var cache = {};
+            cache[fileName] = this.cdnCacheFromFile[md5];
+            uploadPromise = Promise.resolve(cache);
+            this.cdnCache[fileName] = uploadPromise;
             return uploadPromise;
         }
-        try{
-            if(this.options.cdn_provider == '@q/qcdn') {
-                console.log('上传文件'+fileName);
-                var uploadPromise = cdnProvider.upload(fileName, this.options.plugins[this.options.cdn_provider]);
-                cdnCache[fileName] = uploadPromise;
-                return uploadPromise;
+        try{  // 上传
+            console.log('上传文件'+fileName);
+            if(this.options.cdn_provider == '@q/qcdn') { //如何处理不同 CDN Provider 不同执行方法的情况？
+                uploadPromise = this.cdnProvider.upload(fileName, this.options.plugins[this.options.cdn_provider]);
             }
+            this.cdnCache[fileName] = uploadPromise;
+            return uploadPromise;
         }catch(e){
             console.dir(e);
         }
         return Promise.resolve(null);
     },
 
-
     // 获取 fileName 文件中所有需要上传的资源名称
-    _getResource(fileName) {
+    _getSubResource(fileName) {
         const suffix = this._getFileSuffix(fileName);
         if(suffix != 'css' && suffix != this.options.tpl_suffix) return null;
         const regexObj = this._getRegexes(suffix);
@@ -219,10 +172,10 @@ var cdnplz = {
         regexObj.regexes.forEach(regex => {
             while((resource = regex.exec(fileContent))) {
                 var match = resource[regexObj.index];
-                if(!this._getRegexes('url').test(match)){ //若不是一个url，则 push
+                if(!this._getRegexes('url').test(match)){ //若是url，则不处理
                     subResource.push({
                         fileName: resource[regexObj.index],
-                        subResource: this._getResource(resource[regexObj.index])
+                        subResource: this._getSubResource(resource[regexObj.index])
                     });
                 }
             }
@@ -240,7 +193,7 @@ var cdnplz = {
     // 获取文件类型 后缀名
     _getFileSuffix(fileName) {
         const extname = path.extname(fileName);
-        return extname.substring(1,extname.length);
+        return extname.substring(1, extname.length);
     },
 
     // 根据文件类型获取正则数组
@@ -248,29 +201,36 @@ var cdnplz = {
         switch(type) {
             case 'jade':
                 var regexes = [];
-                for(var type in jadeTypeMap) {
-                    regexes.push(new RegExp(`${type}(\\s|\\()*(.*?)${jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*\\)`,'ig'));
+                for(var type in this.jadeTypeMap) {
+                    regexes.push(new RegExp(`${type}(\\s|\\()*(.*?)${this.jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*\\)`,'ig'));
+                    regexes.push(new RegExp(`<${type}\s+(.*?)${this.jadeTypeMap[type]}(\s|\'|\"|\=)*(.*?)(\'|\").*>\s*<\/script>`,'ig'));
                 }
                 return {
                     regexes: regexes,
                     index: 4
                 };
             case 'html':
+                var regexes = [];
+                for(var type in this.jadeTypeMap) {
+                    regexes.push(new RegExp(`<${type}\s+(.*?)${this.jadeTypeMap[type]}(\s|\'|\"|\=)*(.*?)(\'|\").*>\s*<\/script>`,'ig'));
+                }
                 return {
                     regexes: regexes,
-                    index: 0
+                    index: 3
                 }
             case 'css':
                 return {
                     regexes: [/url\((.*?)\)/g],
                     index: 1
                 };
-            case 'url': return /^(https?\:\/\/)?([a-z\d\-]+\.)+[a-z]{2,6}[\/\?\#]?([\/\?\#][\w|\:|\/|\.|\-|\#|\!|\~|\%|\&|\+|\=|\?|\$]+)?$/i;
+            case 'url':
+                return /^(https?\:\/\/)?([a-z\d\-]+\.)+[a-z]{2,6}[\/\?\#]?([\/\?\#][\w|\:|\/|\.|\-|\#|\!|\~|\%|\&|\+|\=|\?|\$]+)?$/i;
+            case 'tpl':    // 需要处理的模版文件正则
+                return `${this.options.tpl_path}/**/*.${this.options.tpl_suffix}`;
             default:
                 return {};
         }
     }
-
 };
 
 module.exports = cdnplz;
