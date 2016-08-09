@@ -48,6 +48,7 @@ var cdnplz = {
                 subResource: this._getSubResource(tpl)
             });
         });
+        console.log(JSON.stringify(this.resourceTree));
         // 遍历资源树，处理其中的子资源
         this.resourceTree.forEach(res => {
             var p = this._dealSubResource(res).then(data => {
@@ -203,7 +204,7 @@ var cdnplz = {
                 var regexes = [];
                 for(var type in this.jadeTypeMap) {
                     regexes.push(new RegExp(`${type}(\\s|\\()*(.*?)${this.jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*\\)`,'ig'));
-                    regexes.push(new RegExp(`<${type}\s+(.*?)${this.jadeTypeMap[type]}(\s|\'|\"|\=)*(.*?)(\'|\").*>\s*<\/script>`,'ig'));
+                    regexes.push(new RegExp(`<${type}(\\s)+(.*?)${this.jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*?`,'ig'));
                 }
                 return {
                     regexes: regexes,
@@ -212,11 +213,11 @@ var cdnplz = {
             case 'html':
                 var regexes = [];
                 for(var type in this.jadeTypeMap) {
-                    regexes.push(new RegExp(`<${type}\s+(.*?)${this.jadeTypeMap[type]}(\s|\'|\"|\=)*(.*?)(\'|\").*>\s*<\/script>`,'ig'));
+                    regexes.push(new RegExp(`<${type}(\\s)+(.*?)${this.jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*?`,'ig'));
                 }
                 return {
                     regexes: regexes,
-                    index: 3
+                    index: 4
                 }
             case 'css':
                 return {
