@@ -30,6 +30,9 @@ var cdnplz = {
     init(options) {
         this.startTime = new Date().getTime();
         this.options = Object.assign(this.options, options); // 用户配置覆盖默认配置
+        if(!this.checkOption('tpl_path') || !this.checkOption('static_path') || !this.checkOption('cdn_provider')) {
+            return false;
+        }
         this.cdnProvider = require(this.options.cdn_provider);
         try { //读取cdn.cache文件，返回一个json格式文件，key: md5, value: cdn 地址
             this.cdnCacheFromFile = JSON.parse(fs.readFileSync(this.cdnCacheFileName, 'utf8'));
@@ -38,9 +41,17 @@ var cdnplz = {
         }
         this.start();
     },
+    checkOption(opt) {
+        if(!this.options[opt]){
+            console.error(`ERROR: ${opt} 未配置。`);
+            return false;
+        }
+        return true;
+    },
     start() {
         var promises = [];
         const tpls = glob.sync(this._getRegexes('tpl'), {mark: true});// 命中的模板文件
+        console.log(tpls);
         // 遍历模板文件内容，处理其中需要上传CDN的文件
         tpls.forEach( tpl => {
             this.resourceTree.push({//获取模板文件中需要上传 CDN 的资源文件名
@@ -109,16 +120,18 @@ var cdnplz = {
 
     //写入指定 output 文件
     _saveFile(file, fileContent)  {
+        console.log(file);
         var outputFile = (this._getFileSuffix(file) == 'css')
                          ? (this.options.static_path + file)
-                         : (this.options.output_path + path.basename(file));
+                         : (file.replace(this.options.tpl_path, this.options.output_path));
         try{
-            if(!fs.statSync(this.options.output_path).isdirectory()){
-                mkdirp.sync(this.options.output_path);
+            if(!fs.statSync(path.dirname(outputFile)).isdirectory()){
+                mkdirp.sync(path.dirname(outputFile));
             }
         }catch(e){
-            mkdirp.sync(this.options.output_path);
+            mkdirp.sync(path.dirname(outputFile));
         }
+        console.log(outputFile)
         fs.writeFileSync(outputFile, fileContent ,this.options.file_encoding || 'utf8');
     },
 
