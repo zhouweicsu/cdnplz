@@ -61,34 +61,22 @@ var cdnplz = {
         });
         console.log(JSON.stringify(this.resourceTree));
         // 遍历资源树，处理其中的子资源
-        this.resourceTree.forEach(res => {
-            var p = this._dealSubResource(res).then(data => {
-                var tplContent = fs.readFileSync(this._getWholePathFile(res.fileName), 'utf8');
-                tplContent = this._replace(tplContent, data);
-                this._saveFile(res.fileName, tplContent);
-            }).catch(e => {
-                console.log(e);
-            });
-            promises.push(p);
-        });
+        promises = this.resourceTree.map(res => 
+            this._dealSubResource(res).then(data => 
+                this._saveFile(res.fileName, this._replace(fs.readFileSync(this._getWholePathFile(res.fileName), 'utf8'), data));
+            ).catch(e => console.log(e));
+        );
         // cdn 上传结束
-        Promise.all(promises).then(response => {
+        Promise.all(promises).then(response => 
             fs.writeFileSync(this.cdnCacheFileName, JSON.stringify(this.cdnCacheFromFile));
-            const time = (new Date().getTime() - this.startTime)/1000;
-            console.log(`-----${time}s-----\nDone!`);
-        });
+        );
     },
 
     //递归处理子资源文件
     _dealSubResource(res) {
-        var promises = [];
-        res.subResource.forEach(subres => {
-            if(subres.subResource) {
-                promises.push(this._dealSubResource(subres));
-            }else {
-                promises.push(this._uploadFile(subres.fileName));
-            }
-        });
+        var promises = res.subResource.map(subres => 
+            subres.subResource ? this._dealSubResource(subres) : this._uploadFile(subres.fileName)
+        );
 
         return Promise.all(promises).then(response => {
             response.forEach(r => {// 处理response，将文件缓存
@@ -96,12 +84,11 @@ var cdnplz = {
                     this.cdnCacheFromFile[this._md5FileSync(fileName)] = r[fileName];
                 }
             });
-            if(this._getFileSuffix(res.fileName) == 'css'){// 替换CSS文件中的资源地址
+            if(this._getFileSuffix(res.fileName) === 'css'){// 替换CSS文件中的资源地址
                 var cssContent = fs.readFileSync(this._getWholePathFile(res.fileName), 'utf8');
-                cssContent = this._replace(cssContent, response);
-                this._saveFile(res.fileName, cssContent);
+                this._saveFile(res.fileName, this._replace(cssContent, response));
                 return this._uploadFile(res.fileName);
-            }else {
+            } else {
                 return Promise.resolve(response);
             }
         });
@@ -125,9 +112,7 @@ var cdnplz = {
                          ? (this.options.static_path + file)
                          : (file.replace(this.options.tpl_path, this.options.output_path));
         try{
-            if(!fs.statSync(path.dirname(outputFile)).isdirectory()){
-                mkdirp.sync(path.dirname(outputFile));
-            }
+            fs.statSync(path.dirname(outputFile)).isdirectory();
         }catch(e){
             mkdirp.sync(path.dirname(outputFile));
         }
@@ -153,7 +138,7 @@ var cdnplz = {
         if(this.cdnCache[fileName]) {  //判断本次是否已经上传过
             return this.cdnCache[fileName];
         }
-        var uploadPromise ;
+        var uploadPromise;
         var md5 = this._md5FileSync(fileName); // 判断上一次执行cdnplz是否上传过该文件
         if(this.cdnCacheFromFile[md5]){
             var cache = {};
@@ -183,7 +168,7 @@ var cdnplz = {
         const fileContent = fs.readFileSync(this._getWholePathFile(fileName), 'utf8');
         var subResource = [],
             resource;
-        regexObj.regexes.forEach(regex => {
+        return regexObj.regexes.forEach(regex => {
             while((resource = regex.exec(fileContent))) {
                 var match = resource[regexObj.index];
                 if(!this._getRegexes('url').test(match)){ //若是url，则不处理
@@ -199,8 +184,7 @@ var cdnplz = {
 
     // 根据文件类型获取带路径文件全名
     _getWholePathFile(fileName) {
-        const suffix = this._getFileSuffix(fileName);
-        const filePath = (suffix == this.options.tpl_suffix) ? '' : this.options.static_path;
+        const filePath = (this._getFileSuffix(fileName) == this.options.tpl_suffix) ? '' : this.options.static_path;
         return `${filePath}${fileName}`;
     },
 
@@ -212,38 +196,31 @@ var cdnplz = {
 
     // 根据文件类型获取正则数组
     _getRegexes(type) {
-        switch(type) {
-            case 'jade':
-                var regexes = [];
-                for(var type in this.jadeTypeMap) {
-                    regexes.push(new RegExp(`${type}(\\s|\\()*(.*?)${this.jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*\\)`,'ig'));
-                    regexes.push(new RegExp(`<${type}(\\s)+(.*?)${this.jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*?`,'ig'));
-                }
-                return {
-                    regexes: regexes,
-                    index: 4
-                };
-            case 'html':
-                var regexes = [];
-                for(var type in this.jadeTypeMap) {
-                    regexes.push(new RegExp(`<${type}(\\s)+(.*?)${this.jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*?`,'ig'));
-                }
-                return {
-                    regexes: regexes,
-                    index: 4
-                }
-            case 'css':
-                return {
-                    regexes: [/url\((.*?)\)/g],
-                    index: 1
-                };
-            case 'url':
-                return /^(https?\:\/\/)?([a-z\d\-]+\.)+[a-z]{2,6}[\/\?\#]?([\/\?\#][\w|\:|\/|\.|\-|\#|\!|\~|\%|\&|\+|\=|\?|\$]+)?$/i;
-            case 'tpl':    // 需要处理的模版文件正则
-                return `${this.options.tpl_path}/**/*.${this.options.tpl_suffix}`;
-            default:
-                return {};
-        }
+        var types = Object.keys(this.jadeTypeMa);
+        if (type === 'jade')
+            return {
+                regexes: types.map(type => new RegExp(`${type}(\\s|\\()*(.*?)${this.jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*\\)`,'ig'))
+                            .concat(types.map(type => new RegExp(`<${type}(\\s)+(.*?)${this.jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*?`,'ig'))),
+                index: 4
+            }
+        if (type === 'html')
+            return {
+                regexes: types.map(type => new RegExp(`<${type}(\\s)+(.*?)${this.jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*?`,'ig')),
+                index: 4
+            }
+            
+        if (type === 'css')
+            return {
+                regexes: [/url\((.*?)\)/g],
+                index: 1
+            };
+        
+        if (type === 'url')
+            return /^(https?\:\/\/)?([a-z\d\-]+\.)+[a-z]{2,6}[\/\?\#]?([\/\?\#][\w|\:|\/|\.|\-|\#|\!|\~|\%|\&|\+|\=|\?|\$]+)?$/i;
+        if (type === 'tpl')
+            return `${this.options.tpl_path}/**/*.${this.options.tpl_suffix}`;
+        
+        return {};
     }
 };
 
