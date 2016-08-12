@@ -148,9 +148,7 @@ var cdnplz = {
         }
         try{  // 上传
             console.log('上传文件'+fileName);
-            if(this.options.cdn_provider == '@q/qcdn') { //如何处理不同 CDN Provider 不同执行方法的情况？
-                uploadPromise = this.cdnProvider.upload(fileName, this.options.plugins[this.options.cdn_provider]);
-            }
+            uploadPromise = this.cdnProvider[this.options.cdn_provider_upload].call(this, fileName, this.options.plugins[this.options.cdn_provider]);
             this.cdnCache[fileName] = uploadPromise;
             return uploadPromise;
         }catch(e){
