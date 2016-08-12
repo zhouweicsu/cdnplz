@@ -14,6 +14,7 @@ try{
         output_path: 'output/view/', //输出目录
         file_encoding: 'utf8', //文件编码
         cdn_provider: 'qcdn',
+        cdn_provider_upload: 'upload',
         plugins: {
             qcdn: {
                 https: true
