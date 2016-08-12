@@ -51,7 +51,6 @@ var cdnplz = {
     start() {
         var promises = [];
         const tpls = glob.sync(this._getRegexes('tpl'), {mark: true});// 命中的模板文件
-        console.log(tpls);
         // 遍历模板文件内容，处理其中需要上传CDN的文件
         tpls.forEach( tpl => {
             this.resourceTree.push({//获取模板文件中需要上传 CDN 的资源文件名
@@ -61,20 +60,22 @@ var cdnplz = {
         });
         console.log(JSON.stringify(this.resourceTree));
         // 遍历资源树，处理其中的子资源
-        promises = this.resourceTree.map(res => 
-            this._dealSubResource(res).then(data => 
-                this._saveFile(res.fileName, this._replace(fs.readFileSync(this._getWholePathFile(res.fileName), 'utf8'), data));
-            ).catch(e => console.log(e));
+        promises = this.resourceTree.map(res =>
+            this._dealSubResource(res).then(data =>
+                this._saveFile(res.fileName, this._replace(fs.readFileSync(this._getWholePathFile(res.fileName), 'utf8'), data))
+            ).catch(e => console.log(e))
         );
         // cdn 上传结束
-        Promise.all(promises).then(response => 
+        Promise.all(promises).then(response => {
             fs.writeFileSync(this.cdnCacheFileName, JSON.stringify(this.cdnCacheFromFile));
-        );
+            const time = (new Date().getTime() - this.startTime)/1000;
+            console.log(`-----${time}s-----\nDone!`);
+        });
     },
 
     //递归处理子资源文件
     _dealSubResource(res) {
-        var promises = res.subResource.map(subres => 
+        var promises = res.subResource.map(subres =>
             subres.subResource ? this._dealSubResource(subres) : this._uploadFile(subres.fileName)
         );
 
@@ -107,7 +108,6 @@ var cdnplz = {
 
     //写入指定 output 文件
     _saveFile(file, fileContent)  {
-        console.log(file);
         var outputFile = (this._getFileSuffix(file) == 'css')
                          ? (this.options.static_path + file)
                          : (file.replace(this.options.tpl_path, this.options.output_path));
@@ -116,7 +116,6 @@ var cdnplz = {
         }catch(e){
             mkdirp.sync(path.dirname(outputFile));
         }
-        console.log(outputFile)
         fs.writeFileSync(outputFile, fileContent ,this.options.file_encoding || 'utf8');
     },
 
@@ -168,7 +167,7 @@ var cdnplz = {
         const fileContent = fs.readFileSync(this._getWholePathFile(fileName), 'utf8');
         var subResource = [],
             resource;
-        return regexObj.regexes.forEach(regex => {
+        regexObj.regexes.forEach(regex => {
             while((resource = regex.exec(fileContent))) {
                 var match = resource[regexObj.index];
                 if(!this._getRegexes('url').test(match)){ //若是url，则不处理
@@ -196,7 +195,7 @@ var cdnplz = {
 
     // 根据文件类型获取正则数组
     _getRegexes(type) {
-        var types = Object.keys(this.jadeTypeMa);
+        var types = Object.keys(this.jadeTypeMap);
         if (type === 'jade')
             return {
                 regexes: types.map(type => new RegExp(`${type}(\\s|\\()*(.*?)${this.jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*\\)`,'ig'))
@@ -208,18 +207,15 @@ var cdnplz = {
                 regexes: types.map(type => new RegExp(`<${type}(\\s)+(.*?)${this.jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*?`,'ig')),
                 index: 4
             }
-            
         if (type === 'css')
             return {
                 regexes: [/url\((.*?)\)/g],
                 index: 1
             };
-        
         if (type === 'url')
             return /^(https?\:\/\/)?([a-z\d\-]+\.)+[a-z]{2,6}[\/\?\#]?([\/\?\#][\w|\:|\/|\.|\-|\#|\!|\~|\%|\&|\+|\=|\?|\$]+)?$/i;
         if (type === 'tpl')
             return `${this.options.tpl_path}/**/*.${this.options.tpl_suffix}`;
-        
         return {};
     }
 };
