@@ -12,6 +12,7 @@ var cdnplz = {
         output_path: 'output/view/', //输出目录
         file_encoding: 'utf8', //文件编码
         cdn_provider: '',
+        cdn_provider_upload: 'upload',
         plugins: {}
     },
     jadeTypeMap: { // 标签与属性的对应关系
