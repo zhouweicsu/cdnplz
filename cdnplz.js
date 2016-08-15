@@ -60,13 +60,9 @@ var cdnplz = {
                 subResource: this._getSubResource(tpl)
             });
         });
-        console.log(JSON.stringify(this.resourceTree));
         // 遍历资源树，处理其中的子资源
         promises = this.resourceTree.map(res =>
             this._dealSubResource(res).then(data =>{
-                console.log('--------------data----------');
-                console.log(data);
-                console.log('--------------data----------');
                 this._saveFile(res.fileName, this._replace(fs.readFileSync(this._getWholePathFile(res.fileName), 'utf8'), data))
             }
             ).catch(e => console.log(e))
@@ -86,7 +82,6 @@ var cdnplz = {
         );
 
         return Promise.all(promises).then(response => {
-            console.dir(response);
             response.forEach(r => {// 处理response，将文件缓存
                 for( var fileName in r ){
                     this.cdnCacheFromFile[this._md5FileSync(fileName)] = r[fileName];
@@ -94,7 +89,6 @@ var cdnplz = {
             });
             if(this._getFileSuffix(res.fileName) === 'css'){// 替换CSS文件中的资源地址
                 var cssContent = fs.readFileSync(this._getWholePathFile(res.fileName), 'utf8');
-                console.log(res.fileName);
                 this._saveFile(res.fileName, this._replace(cssContent, response));
                 return this._uploadFile(res.fileName);
             } else {
