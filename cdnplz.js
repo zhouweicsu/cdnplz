@@ -3,24 +3,26 @@ const fs = require('fs');
 const mkdirp = require('mkdirp');
 const path = require('path');
 const crypto = require('crypto');
+const url = require('url');
 
 var cdnplz = {
     options: {
         tpl_suffix: 'html',   //模板文件后缀名
-        tpl_path: 'app/view', //模板根目录
+        tpl_path: 'app/view/', //模板根目录
         static_path: '.',  //静态资源的目录
         output_path: 'output/view/', //输出目录
         file_encoding: 'utf8', //文件编码
         cdn_provider: '',
         cdn_options: {}
     },
-    jadeTypeMap: { // 标签与属性的对应关系
+    tplTypeMap: { // 标签与属性的对应关系
         'img': 'src',
         'script': 'src',
         'embed': 'src',
         'link': 'href',
         'object': 'data'
     },
+    tplSuffixs: ['html'],
     cdnCache: {},// 缓存文件上传的 Promise
     cdnCacheFromFile: {},// 本地的CDN地址缓存文件
     cdnCacheFileName: './cdn.cache',// 本地的CDN地址缓存文件路径+名称
@@ -31,6 +33,7 @@ var cdnplz = {
     init(options) {
         this.startTime = new Date().getTime();
         this.options = Object.assign(this.options, options); // 用户配置覆盖默认配置
+        this.tplSuffixs = this.options.tpl_suffix.split(',');
         this.tempPath = require("os").tmpdir(); //获取文件临时文件夹路径
         if(!this.checkOption('tpl_path') || !this.checkOption('static_path') || !this.checkOption('cdn_provider')) {
             return false;
@@ -41,7 +44,6 @@ var cdnplz = {
         }catch(e){
             //console.log(e); 若没有缓存文件，不报错
         }
-        this.start();
     },
     checkOption(opt) {
         if(!this.options[opt]){
@@ -50,7 +52,8 @@ var cdnplz = {
         }
         return true;
     },
-    start() {
+    start(options) {
+        this.init(options);
         var promises = [];
         const tpls = glob.sync(this._getRegexes('tpl'), {mark: true});// 命中的模板文件
         // 遍历模板文件内容，处理其中需要上传CDN的文件
@@ -63,7 +66,7 @@ var cdnplz = {
         // 遍历资源树，处理其中的子资源
         promises = this.resourceTree.map(res =>
             this._dealSubResource(res).then(data =>{
-                this._saveFile(res.fileName, this._replace(fs.readFileSync(this._getWholePathFile(res.fileName), 'utf8'), data))
+                this._saveFile(res.fileName, this._replace(fs.readFileSync(res.fileName, 'utf8'), data))
             }
             ).catch(e => console.log(e))
         );
@@ -109,10 +112,10 @@ var cdnplz = {
     },
 
     //写入指定 output 文件
-    _saveFile(file, fileContent)  {
-        var outputFile = (this._getFileSuffix(file) == 'css')
-                         ? (this.tempPath + file)
-                         : (file.replace(this.options.tpl_path, this.options.output_path));
+    _saveFile(fileName, fileContent)  {
+        var outputFile = (this._getFileSuffix(fileName) == 'css')
+                         ? (this.tempPath + fileName)
+                         : (fileName.replace(this.options.tpl_path, this.options.output_path));
         try{
             if(!fs.statSync(path.dirname(outputFile)).isdirectory()){
                 mkdirp.sync(path.dirname(outputFile));
@@ -160,9 +163,13 @@ var cdnplz = {
         }
         try{  // 上传
             console.log('上传文件'+fileName);
-            uploadPromise = this.cdnProvider.upload(fileName, this.options.cdn_options);
-            this.cdnCache[fileName] = uploadPromise;
-            return uploadPromise;
+            if(!fs.statSync(fileName).isFile()){
+                console.error(`ERROR：文件 ${fileName} 不存在！`);
+            }else {
+                uploadPromise = this.cdnProvider.upload(fileName, this.options.cdn_options);
+                this.cdnCache[fileName] = uploadPromise;
+                return uploadPromise;
+            }
         }catch(e){
             console.dir(e);
         }
@@ -172,7 +179,7 @@ var cdnplz = {
     // 获取 fileName 文件中所有需要上传的资源名称
     _getSubResource(fileName) {
         const suffix = this._getFileSuffix(fileName);
-        if(suffix != 'css' && suffix != this.options.tpl_suffix) return null;
+        if(suffix != 'css' && !this._isTplFile(fileName)) return null;
         const regexObj = this._getRegexes(suffix);
         const fileContent = fs.readFileSync(this._getWholePathFile(fileName), 'utf8');
         var subResource = [],
@@ -182,7 +189,7 @@ var cdnplz = {
                 var match = resource[regexObj.index];
                 if(!this._getRegexes('url').test(match)){ //若是url，则不处理
                     subResource.push({
-                        fileName: resource[regexObj.index],
+                        fileName: url.parse(resource[regexObj.index]).pathname,
                         subResource: this._getSubResource(resource[regexObj.index])
                     });
                 }
@@ -193,8 +200,13 @@ var cdnplz = {
 
     // 根据文件类型获取带路径文件全名
     _getWholePathFile(fileName) {
-        const filePath = (this._getFileSuffix(fileName) == this.options.tpl_suffix) ? '' : this.options.static_path;
+        const filePath = this._isTplFile(fileName) ? '' : this.options.static_path;
         return `${filePath}${fileName}`;
+    },
+
+    _isTplFile(fileName) {
+        const suffix = this._getFileSuffix(fileName);
+        return !this.tplSuffixs.every(ts => suffix != ts);
     },
 
     // 获取文件类型 后缀名
@@ -205,27 +217,34 @@ var cdnplz = {
 
     // 根据文件类型获取正则数组
     _getRegexes(type) {
-        var types = Object.keys(this.jadeTypeMap);
+        var types = Object.keys(this.tplTypeMap);
         if (type === 'jade')
             return {
-                regexes: types.map(type => new RegExp(`${type}(\\s|\\()*(.*?)${this.jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*\\)`,'ig'))
-                            .concat(types.map(type => new RegExp(`<${type}(\\s)+(.*?)${this.jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*?`,'ig'))),
+                regexes: types.map(type => new RegExp(`${type}(\\s|\\()*(.*?)${this.tplTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*\\)`,'ig'))
+                            .concat(types.map(type => new RegExp(`<${type}(\\s)+(.*?)${this.tplTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*?`,'ig'))),
                 index: 4
             }
-        if (type === 'html')
+        if (type === 'html' || type === 'ejs')
             return {
-                regexes: types.map(type => new RegExp(`<${type}(\\s)+(.*?)${this.jadeTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*?`,'ig')),
+                regexes: types.map(type => new RegExp(`<${type}(\\s)+(.*?)${this.tplTypeMap[type]}(\\s|\\'|\\"|\\=)*(.*?)(\\'|\\").*?`,'ig')),
                 index: 4
             }
         if (type === 'css')
             return {
-                regexes: [/url\((.*?)\)/g],
+                regexes: [/url\(['"]?(.*?)['"]?\)/g],
                 index: 1
             };
         if (type === 'url')
-            return /^(https?\:\/\/)?([a-z\d\-]+\.)+[a-z]{2,6}[\/\?\#]?([\/\?\#][\w|\:|\/|\.|\-|\#|\!|\~|\%|\&|\+|\=|\?|\$]+)?$/i;
-        if (type === 'tpl')
-            return `${this.options.tpl_path}/**/*.${this.options.tpl_suffix}`;
+            return /^(https?\:)?\/\//i;
+        if (type === 'tpl'){
+            if(this.tplSuffixs.length <= 1 ){
+                 return `${this.options.tpl_path}/**/*.${suffix}`;
+            }
+            var tplGlob = this.tplSuffixs.map(suffix => {
+                 return `${this.options.tpl_path}/**/*.${suffix}`;
+            });
+            return `{${tplGlob.join(',')}}`;
+        }
         return {};
     }
 };

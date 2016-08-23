@@ -7,7 +7,7 @@ A tool for uploading file to cdn.
 const cdnplz = require('cdnplz');
 
 try{
-    cdnplz.init({
+    cdnplz.start({
         tpl_suffix: 'jade',   //the suffix of template file
         tpl_path: 'app/view', //the root path of template file
         static_path: '.',  //the path of the static file
@@ -23,7 +23,7 @@ try{
 }
 ```
 
-# cdn provider
+# you should provide a cdn provider
 
 ```javascript
 const qcdn = require('@q/qcdn');
