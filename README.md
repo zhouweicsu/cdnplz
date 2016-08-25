@@ -34,9 +34,11 @@ module.exports = {
     }
 }
 ```
-Cdn provider should return a object which has a `upload` method, and this `upload` method takes `filePath` and `options` as parameters, returns a Promise. The data resolved by the Promise must be a array of Objects like this:
+Cdn provider should return a object which has a `upload` method, and this `upload` method takes `filePath` and `options` as parameters, returns a Promise. The data resolved by the Promise must be a Object like this:
 ```
-[ { './static/img/logo.png': 'https://p1.ssl.qhimg.com/t010a4bf91e826708df.png' },
-  { './static/js/main.js': 'https://s0.ssl.qhimg.com/static/c870687eb082c330.js' } ]
+{ 
+  './static/img/logo.png': 'https://p1.ssl.qhimg.com/t010a4bf91e826708df.png' ,
+  './static/js/main.js': 'https://s0.ssl.qhimg.com/static/c870687eb082c330.js'
+} 
 ```
 
