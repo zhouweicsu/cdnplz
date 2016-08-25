@@ -17,8 +17,6 @@
   },
   "homepage": "https://github.com/zhouweicsu/cdnplz",
   "dependencies": {
-    "babel-core": "^6.11.4",
-    "babel-preset-stage-3": "^6.11.0",
     "glob": "^7.0.5",
     "mkdirp": "^0.5.1"
   }
