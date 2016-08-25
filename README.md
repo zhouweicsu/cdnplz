@@ -42,3 +42,8 @@ Cdn provider should return a object which has a `upload` method, and this `uploa
 } 
 ```
 
+# qiniu cdn Provider
+
+https://github.com/webzhao/cdnplz-qiniu
+
+
