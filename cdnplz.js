@@ -241,8 +241,8 @@ class cdnplz {
     }
 
     getTplFileNames() {
-        if(this.tplSuffixs.length <= 1 ){
-            return glob.sync(`${this.options.tpl_path}/**/*.${suffix}`, {mark: true});// 命中的模板文件
+        if(this.tplSuffixs.length == 1 ){
+            return glob.sync(`${this.options.tpl_path}/**/*.${this.tplSuffixs[0]}`, {mark: true});// 命中的模板文件
         }
         const tplGlob = this.tplSuffixs.map(suffix => {
              return `${this.options.tpl_path}/**/*.${suffix}`;
