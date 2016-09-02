@@ -39,9 +39,13 @@ class cdnplz {
         this.tplSuffixs = this.options.tpl_suffix.split(',');//本次上传需要分析的模板文件类型
         this.tempPath = require("os").tmpdir(); //获取存放临时文件的文件夹路径
         try { //获取用户自定义的 CDNProvider
-            this.cdnProvider = require('cdnplz-'+this.options.cdn_provider);
+            var cdnProviderName = 'cdnplz-'+this.options.cdn_provider;
+            if(this.options.cdn_provider.indexOf('@')==0){
+                cdnProviderName = this.options.cdn_provider;
+            }
+            this.cdnProvider = require(cdnProviderName);
         }catch(e){
-            console.error(`ERROR：错误的 cdnProvider，cdnplz-${this.options.cdn_provider} 不存在。`);
+            console.error(`ERROR：错误的 cdnProvider，${cdnProviderName} 不存在。`);
             return false;
         }
         try { //读取cdn.cache文件，返回一个json格式文件，key: md5, value: cdn 地址
