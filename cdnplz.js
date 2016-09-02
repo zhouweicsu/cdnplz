@@ -30,7 +30,7 @@ class cdnplz {
         this.startTime = new Date().getTime();//记录总用时的start
         this.options = Object.assign(defaultOptions, options); // 用户配置覆盖默认配置
         if(!this.checkOption('tpl_path') || !this.checkOption('static_path') || !this.checkOption('cdn_provider')){
-            return false;
+            process.exit(1);
         }
         this.uploadingPromises = {};// 缓存文件上传的 Promise
         this.uploadedFiles = {};// 本地的CDN地址缓存文件
@@ -46,7 +46,7 @@ class cdnplz {
             this.cdnProvider = require(cdnProviderName);
         }catch(e){
             console.error(`ERROR：错误的 cdnProvider，${cdnProviderName} 不存在。`);
-            return false;
+            process.exit(1);
         }
         try { //读取cdn.cache文件，返回一个json格式文件，key: md5, value: cdn 地址
             this.uploadedFiles = JSON.parse(fs.readFileSync(this.cacheFile, 'utf8'));
@@ -75,7 +75,10 @@ class cdnplz {
             this.dealSubResource(res).then(data =>{
                 var fileContent = fs.readFileSync(res.fileName, 'utf8');
                 this.saveFile(res.fileName, this.replace(fileContent, data));
-            }).catch(console.log)
+            }).catch(e){
+                console.log(e);
+                process.exit(1);
+            }
         );
         // cdn 上传结束
         Promise.all(promises).then(response => {
@@ -133,6 +136,7 @@ class cdnplz {
             hash.update(fs.readFileSync(fileName, this.options.file_encoding));
         }catch(e){
             console.log(e);
+            process.exit(1);
         }
         return hash.digest('hex');
     }
@@ -196,6 +200,7 @@ class cdnplz {
             return uploadPromise;
         }catch(e){
             console.dir(e);
+            process.exit(1);
         }
         return Promise.resolve(null);
     }
