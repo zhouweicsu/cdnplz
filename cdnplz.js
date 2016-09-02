@@ -41,7 +41,8 @@ class cdnplz {
         try { //获取用户自定义的 CDNProvider
             this.cdnProvider = require('cdnplz-'+this.options.cdn_provider);
         }catch(e){
-            console.error('ERROR：请提供 cdnProvider。');
+            console.error(`ERROR：错误的 cdnProvider，cdnplz-${this.options.cdn_provider} 不存在。`);
+            return false;
         }
         try { //读取cdn.cache文件，返回一个json格式文件，key: md5, value: cdn 地址
             this.uploadedFiles = JSON.parse(fs.readFileSync(this.cacheFile, 'utf8'));
@@ -237,7 +238,7 @@ class cdnplz {
     }
 
     isUrl(str) { //判断字符串是否是url
-        return /^(https?\:)?\/\//i.test(str);
+        return /^((https?\:)?\/\/|(data\:))/i.test(str);
     }
 
     getTplFileNames() {
