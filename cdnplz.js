@@ -209,7 +209,7 @@ class cdnplz {
         var types = Object.keys(tplTypes);
         var jadeRegs = types.map(type => new RegExp(`${type}(\\s|\\()*(.*?)${tplTypes[type]}(\\s|'|"|\\=)*(.*?)('|").*\\)`,'ig'));
         var htmlRegs = types.map(type => new RegExp(`<${type}(\\s)+(.*?)${tplTypes[type]}(\\s|'|"|\\=)*(.*?)('|").*?`,'ig'));
-        if (type === 'jade')
+        if (type === 'jade' || type === 'pug')
             return {
                 regexes: jadeRegs.concat(htmlRegs),
                 group: 4
