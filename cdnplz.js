@@ -75,10 +75,10 @@ class cdnplz {
             this.dealSubResource(res).then(data =>{
                 var fileContent = fs.readFileSync(res.fileName, 'utf8');
                 this.saveFile(res.fileName, this.replace(fileContent, data));
-            }).catch(e){
+            }).catch(e => {
                 console.log(e);
                 process.exit(1);
-            }
+            })
         );
         // cdn 上传结束
         Promise.all(promises).then(response => {
