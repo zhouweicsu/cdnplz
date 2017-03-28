@@ -37,7 +37,7 @@ class cdnplz {
         this.cacheFile = './cdn.cache';// 本地的CDN地址缓存文件路径+名称
         this.resourceTree = []; // 静态资源树
         this.tplSuffixs = this.options.tpl_suffix.split(',');//本次上传需要分析的模板文件类型
-        this.tempPath = require("os").tmpdir(); //获取存放临时文件的文件夹路径
+        this.tempPath = require("os").tmpdir()+'/cdnplz-'+(new Date().getTime()); //获取存放临时文件的文件夹路径
         try { //获取用户自定义的 CDNProvider
             var cdnProviderName = 'cdnplz-'+this.options.cdn_provider;
             if(this.options.cdn_provider.indexOf('@')==0){
